@@ -52,7 +52,7 @@ class Job:
         return datetime.datetime.strptime(t, '%Y-%m-%d').date()
 
 
-def query_linkedin(query, location) -> List[Job]:
+def query_linkedin(query: str, location: str, env: str) -> List[Job]:
     url = f'{BASE_URL}/jobs/search/'
     params = {
         "keywords" : query, 
@@ -72,16 +72,19 @@ def query_linkedin(query, location) -> List[Job]:
     jobs = []
 
     while start < total_new_jobs:
+        print("Getting next batch of 25 jobs...")
         resp = requests.get(url, params=params)
         soup = BeautifulSoup(resp.text, features="html.parser")
 
         title = soup.title
         assert title
-        # total_new_jobs = int(title.getText().split()[0])
+        # Only update the total new jobs if we are running in prod.
+        total_new_jobs = int(title.getText().split()[0]) if env == 'prod' else total_new_jobs
 
         jobs.extend(parse_linkedin(soup))
         start = start + 25
 
+    print(f"Done! Got {total_new_jobs} new jobs from today.")
     return jobs
 
 
@@ -93,6 +96,10 @@ def parse_linkedin(soup: BeautifulSoup) -> List[Job]:
 def main():
     parser = argparse.ArgumentParser(description="LinkedIn Crawler")
     parser.add_argument(
+        '--env', '-e', type=str, default='dev', choices=('prod', 'dev'),
+        help='Flag to specify if you want to crawl all the days worth of data or not.'
+    )
+    parser.add_argument(
         '--query', '-q', type=str, default='data engineer',
         help="The query to submit to LinkedIn. Something like 'data engineer'"
     )
@@ -103,21 +110,24 @@ def main():
     parser.add_argument(
         '--output', '-o', type=str,
         default=f'linkedin-jobs-{datetime.datetime.now().date()}.csv',
-        help="The location to save the data LinkedIn."
+        help="The location to save the data LinkedIn. Defaults to 'linkedin-jobs-<DATE>.csv'"
     )
 
     # Ensure provided locale is valid
     args = parser.parse_args()
+    print(f"Running with args: {args}")
     jobs = []
     jobs.extend(
-        query_linkedin(args.query, args.location)
+        query_linkedin(args.query, args.location, args.env)
     )
 
+    print("Saving file...")
     with open(args.output, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=',')
         writer.writerow(["Job Title", "Company", "Location", "Salary Range", "Date Posted"])
         for job in jobs:
             writer.writerow(job.as_csv_line())
+    print(f"File saved to {args.output}")
 
 
 if __name__ == "__main__":
