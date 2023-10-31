@@ -6,6 +6,8 @@ from typing import List, Optional
 import requests
 from bs4 import BeautifulSoup, element
 
+from state_code import get_as_state_code
+
 
 BASE_URL = 'https://www.linkedin.com'
 
@@ -15,10 +17,18 @@ class Job:
         self.company = Job.read_company(job_html)
         self.location = Job.read_location(job_html)
         self.salary_range = Job.read_salary_range(job_html)
-        self.date_posted = Job.get_job_post_date(job_html)
+        self.date_posted = Job.get_post_date(job_html)
+        self.link = Job.get_link(job_html)
     
+    @staticmethod
+    def csv_headers():
+        return ["Job Title", "Company", "Location", "Salary Range", "Date Posted", "Job Link"]
+
     def as_csv_line(self):
-        return [self.title, self.company, self.location, self.salary_range, self.date_posted]
+        return [
+            self.title, self.company, get_as_state_code(self.location),
+            self.salary_range, self.date_posted, self.link
+        ]
 
     @staticmethod
     def read_title(job_html: element.Tag) -> str:
@@ -44,12 +54,20 @@ class Job:
         return ' '.join([s.strip() for s in tag.getText().strip().split('\n')]) if tag else None
 
     @staticmethod
-    def get_job_post_date(job_html: element.Tag) -> datetime.date:
+    def get_post_date(job_html: element.Tag) -> datetime.date:
         tag = job_html.find('time')
         assert isinstance(tag, element.Tag)
         t = tag.get('datetime')
         assert isinstance(t, str)
         return datetime.datetime.strptime(t, '%Y-%m-%d').date()
+
+    @staticmethod
+    def get_link(job_html: element.Tag) -> str:
+        tag = job_html.find('a', {"class": "base-card__full-link"})
+        assert isinstance(tag, element.Tag)
+        result = tag['href']
+        assert isinstance(result, str)
+        return result
 
 
 def query_linkedin(query: str, location: str, env: str) -> List[Job]:
@@ -79,7 +97,7 @@ def query_linkedin(query: str, location: str, env: str) -> List[Job]:
         title = soup.title
         assert title
         # Only update the total new jobs if we are running in prod.
-        total_new_jobs = int(title.getText().split()[0]) if env == 'prod' else total_new_jobs
+        total_new_jobs = int(title.getText().split()[0]) if env == 'prod' else -1
 
         jobs.extend(parse_linkedin(soup))
         start = start + 25
@@ -124,11 +142,11 @@ def main():
     print("Saving file...")
     with open(args.output, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=',')
-        writer.writerow(["Job Title", "Company", "Location", "Salary Range", "Date Posted"])
+        writer.writerow(Job.csv_headers())
         for job in jobs:
             writer.writerow(job.as_csv_line())
     print(f"File saved to {args.output}")
 
 
 if __name__ == "__main__":
-    jobs = main()
+    main()
