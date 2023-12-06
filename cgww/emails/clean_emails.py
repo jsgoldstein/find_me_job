@@ -20,7 +20,7 @@ class Person:
 
 def get_full_name(row: List[str]) -> List[str]:
     print(row)
-    email = row[0]
+    email = row[0].lower()
     first_name = row[1]
     last_name = row[2]
     if not first_name and last_name and len(last_name.split()) == 2:
